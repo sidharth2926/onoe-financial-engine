@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Logistics Control Tower</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgMain: '#0f172a',    // Slate 900
+                        colBg: '#1e293b',     // Slate 800
+                        cardBg: '#334155',    // Slate 700
+                        primary: '#8b5cf6',   // Violet 500
+                        primaryHover: '#7c3aed',
+                        accent: '#a78bfa',    // Violet 400
+                        success: '#10b981',   // Emerald 500
+                        danger: '#ef4444',    // Red 500
+                        textMain: '#f1f5f9',
+                        textSub: '#94a3b8'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f1f5f9; font-family: 'Inter', sans-serif; }
+        
+        /* Custom Range Slider */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #8b5cf6; margin-top: -6px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; background: #334155; border-radius: 2px;
+        }
+
+        /* Scrollbars */
+        .kanban-col { overflow-y: auto; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        
+        /* Card Animations */
+        .task-card { transition: all 0.2s ease; border-left: 4px solid transparent; }
+        .task-card:hover { transform: translateY(-2px); border-left-color: #8b5cf6; background-color: #475569; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden p-3 md:p-5">
+
+    <header class="shrink-0 mb-4 border-b border-slate-800 pb-4">
+        <div class="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase">Interactive Mode</span>
+                    <span class="text-accent text-xs uppercase tracking-widest font-bold">Supply Chain Ops</span>
+                </div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    <span>🚛</span> Logistics Control Tower
+                </h1>
+            </div>
+
+            <div class="flex gap-1 md:gap-4 bg-colBg p-2 rounded-lg border border-slate-700 shadow-lg">
+                <div class="px-2 md:px-4">
+                    <div class="text-[10px] text-textSub uppercase">Baseline Cost</div>
+                    <div class="text-lg font-bold text-gray-400">₹<span id="kpiBase">0</span> Cr</div>
+                </div>
+                <div class="w-px bg-slate-600"></div>
+                <div class="px-2 md:px-4">
+                    <div class="text-[10px] text-textSub uppercase text-primary">Simulated Cost</div>
+                    <div class="text-xl font-bold text-white">₹<span id="kpiSim">0</span> Cr</div>
+                </div>
+                <div class="w-px bg-slate-600"></div>
+                <div class="px-2 md:px-4">
+                    <div class="text-[10px] text-textSub uppercase">Efficiency Gain</div>
+                    <div class="text-lg font-bold text-success" id="kpiSavings">0%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-6 bg-colBg/50 p-3 rounded-xl border border-slate-800">
+            <div>
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="text-textSub">Fuel & Vendor Inflation</span>
+                    <span class="font-mono font-bold text-accent" id="valInflation">0%</span>
+                </div>
+                <input type="range" id="sliderInflation" min="-10" max="20" value="0" step="1" class="w-full" oninput="updateSim()">
+            </div>
+            <div>
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="text-textSub">Route Optimization (AI)</span>
+                    <span class="font-mono font-bold text-success" id="valOptimization">0%</span>
+                </div>
+                <input type="range" id="sliderOptimization" min="0" max="40" value="0" step="5" class="w-full" oninput="updateSim()">
+            </div>
+            <div>
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="text-textSub">Fleet Utilization Rate</span>
+                    <span class="font-mono font-bold text-accent" id="valUtilization">80%</span>
+                </div>
+                <input type="range" id="sliderUtilization" min="60" max="100" value="80" step="5" class="w-full" oninput="updateSim()">
+            </div>
+        </div>
+    </header>
+
+    <div class="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-4 min-h-0">
+        
+        <div class="flex flex-col bg-colBg rounded-xl border border-slate-700 min-h-0 shadow-lg">
+            <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-xl shrink-0">
+                <h3 class="font-bold text-sm text-textMain">Heavy Load Ops</h3>
+                <span class="bg-red-900 text-red-200 text-[10px] px-2 py-1 rounded-full" id="countHeavy">0</span>
+            </div>
+            <div class="p-2 kanban-col space-y-2 flex-grow" id="colHeavy"></div>
+        </div>
+
+        <div class="flex flex-col bg-colBg rounded-xl border border-slate-700 min-h-0 shadow-lg">
+            <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-xl shrink-0">
+                <h3 class="font-bold text-sm text-textMain">Standard Ops</h3>
+                <span class="bg-yellow-900 text-yellow-200 text-[10px] px-2 py-1 rounded-full" id="countMedium">0</span>
+            </div>
+            <div class="p-2 kanban-col space-y-2 flex-grow" id="colMedium"></div>
+        </div>
+
+        <div class="flex flex-col bg-colBg rounded-xl border border-slate-700 min-h-0 shadow-lg">
+            <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 rounded-t-xl shrink-0">
+                <h3 class="font-bold text-sm text-textMain">Local Ops</h3>
+                <span class="bg-emerald-900 text-emerald-200 text-[10px] px-2 py-1 rounded-full" id="countLight">0</span>
+            </div>
+            <div class="p-2 kanban-col space-y-2 flex-grow" id="colLight"></div>
+        </div>
+
+        <div class="flex flex-col gap-4 min-h-0">
+            <div class="bg-colBg p-3 rounded-xl border border-slate-700 flex-grow relative shadow-lg min-h-0">
+                <h3 class="absolute top-3 left-3 text-[10px] font-bold uppercase text-textSub">Regional Load Intensity</h3>
+                <div class="w-full h-full pt-4">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-colBg p-3 rounded-xl border border-slate-700 h-1/3 min-h-[150px] shadow-lg relative">
+                <h3 class="absolute top-3 left-3 text-[10px] font-bold uppercase text-textSub">Efficiency Breakdown</h3>
+                <div class="w-full h-full pt-4">
+                    <canvas id="stackedChart"></canvas>
+                </div>
+            </div>
+            
+            <button onclick="downloadCSV()" class="bg-primary hover:bg-primaryHover text-white py-3 rounded-lg font-bold text-xs uppercase tracking-wider transition shadow-lg shrink-0 flex justify-center items-center gap-2">
+                <span>⬇</span> Export Simulated Manifest
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- DATASET ---
+        const rawCsvData = `State,Category,Line_Item,Details,Funding,Standard_Cycle_Cost_Cr,ONOE_Cycle_Cost_Cr,Impact,Variance_Cr
+Uttar Pradesh,Logistics,Last Mile Transport,Trucks/Buses,State,96.72,53.2,Savings,-43.52
+West Bengal,Logistics,Last Mile Transport,Trucks/Buses,State,70.56,38.81,Savings,-31.75
+Maharashtra,Logistics,Last Mile Transport,Trucks/Buses,State,69.12,38.02,Savings,-31.1
+Bihar,Logistics,Last Mile Transport,Trucks/Buses,State,58.32,32.08,Savings,-26.24
+Tamil Nadu,Logistics,Last Mile Transport,Trucks/Buses,State,56.16,30.89,Savings,-25.27
+Madhya Pradesh,Logistics,Last Mile Transport,Trucks/Buses,State,55.2,30.36,Savings,-24.84
+Karnataka,Logistics,Last Mile Transport,Trucks/Buses,State,53.76,29.57,Savings,-24.19
+Rajasthan,Logistics,Last Mile Transport,Trucks/Buses,State,48.0,26.4,Savings,-21.6
+Gujarat,Logistics,Last Mile Transport,Trucks/Buses,State,43.68,24.02,Savings,-19.66
+Andhra Pradesh,Logistics,Last Mile Transport,Trucks/Buses,State,42.0,23.1,Savings,-18.9
+Odisha,Logistics,Last Mile Transport,Trucks/Buses,State,35.28,19.4,Savings,-15.88
+Kerala,Logistics,Last Mile Transport,Trucks/Buses,State,33.6,18.48,Savings,-15.12
+Assam,Logistics,Last Mile Transport,Trucks/Buses,State,30.24,16.63,Savings,-13.61
+Telangana,Logistics,Last Mile Transport,Trucks/Buses,State,28.56,15.71,Savings,-12.85
+Punjab,Logistics,Last Mile Transport,Trucks/Buses,State,28.08,15.44,Savings,-12.64
+Chhattisgarh,Logistics,Last Mile Transport,Trucks/Buses,State,21.6,11.88,Savings,-9.72
+Haryana,Logistics,Last Mile Transport,Trucks/Buses,State,21.6,11.88,Savings,-9.72
+Jammu & Kashmir,Logistics,Last Mile Transport,Trucks/Buses,State,21.6,11.88,Savings,-9.72
+Jharkhand,Logistics,Last Mile Transport,Trucks/Buses,State,19.44,10.69,Savings,-8.75
+Uttarakhand,Logistics,Last Mile Transport,Trucks/Buses,State,16.8,9.24,Savings,-7.56
+Delhi (NCT),Logistics,Last Mile Transport,Trucks/Buses,State,16.8,9.24,Savings,-7.56
+Himachal Pradesh,Logistics,Last Mile Transport,Trucks/Buses,State,16.32,8.98,Savings,-7.34
+Tripura,Logistics,Last Mile Transport,Trucks/Buses,State,14.4,7.92,Savings,-6.48
+Meghalaya,Logistics,Last Mile Transport,Trucks/Buses,State,14.4,7.92,Savings,-6.48
+Manipur,Logistics,Last Mile Transport,Trucks/Buses,State,14.4,7.92,Savings,-6.48
+Nagaland,Logistics,Last Mile Transport,Trucks/Buses,State,14.4,7.92,Savings,-6.48
+Arunachal Pradesh,Logistics,Last Mile Transport,Trucks/Buses,State,14.4,7.92,Savings,-6.48
+Goa,Logistics,Last Mile Transport,Trucks/Buses,State,9.6,5.28,Savings,-4.32
+Mizoram,Logistics,Last Mile Transport,Trucks/Buses,State,9.6,5.28,Savings,-4.32
+Sikkim,Logistics,Last Mile Transport,Trucks/Buses,State,7.68,4.22,Savings,-3.46`;
+
+        let data = [];
+        let radarChart, stackedChart;
+        let currentSimData = [];
+
+        // --- INIT ---
+        function init() {
+            const results = Papa.parse(rawCsvData, { header: true, dynamicTyping: true, skipEmptyLines: true });
+            data = results.data.sort((a, b) => b.Standard_Cycle_Cost_Cr - a.Standard_Cycle_Cost_Cr);
+            setupCharts();
+            updateSim();
+        }
+
+        // --- CALCULATION ENGINE ---
+        function calculateScenario() {
+            // Get Sliders
+            const inflation = parseInt(document.getElementById('sliderInflation').value) / 100;
+            const optimize = parseInt(document.getElementById('sliderOptimization').value) / 100;
+            const utilization = parseInt(document.getElementById('sliderUtilization').value) / 100;
+            
+            // Baseline Utilization assumed at 80% (0.8). If utilization goes to 100% (1.0), costs drop.
+            // Factor = (Base Util / New Util)
+            const utilFactor = 0.8 / utilization; 
+
+            // Update Labels
+            document.getElementById('valInflation').innerText = (inflation > 0 ? "+" : "") + (inflation*100) + "%";
+            document.getElementById('valOptimization').innerText = "-" + (optimize*100) + "%";
+            document.getElementById('valUtilization').innerText = (utilization*100) + "%";
+
+            let totalBase = 0;
+            let totalSim = 0;
+            let simRows = [];
+
+            data.forEach(row => {
+                const base = row.ONOE_Cycle_Cost_Cr; // This is our starting point
+                
+                // Logic: 
+                // 1. Add Inflation
+                // 2. Subtract Optimization savings
+                // 3. Adjust for Utilization efficiency
+                let simCost = base * (1 + inflation);
+                simCost = simCost * (1 - optimize);
+                simCost = simCost * utilFactor;
+
+                totalBase += base;
+                totalSim += simCost;
+
+                simRows.push({
+                    ...row,
+                    simCost: simCost,
+                    savingsPct: ((base - simCost) / base) * 100
+                });
+            });
+
+            return { totalBase, totalSim, simRows };
+        }
+
+        // --- UI UPDATER ---
+        function updateSim() {
+            const { totalBase, totalSim, simRows } = calculateScenario();
+            currentSimData = simRows;
+
+            // KPI Header
+            document.getElementById('kpiBase').innerText = totalBase.toLocaleString(undefined, {maximumFractionDigits:0});
+            document.getElementById('kpiSim').innerText = totalSim.toLocaleString(undefined, {maximumFractionDigits:0});
+            
+            const totalSavingsPct = ((totalBase - totalSim) / totalBase) * 100;
+            const elSave = document.getElementById('kpiSavings');
+            elSave.innerText = (totalSavingsPct > 0 ? "▼ " : "▲ ") + Math.abs(totalSavingsPct).toFixed(1) + "%";
+            elSave.className = totalSavingsPct > 0 ? "text-lg font-bold text-success" : "text-lg font-bold text-danger";
+
+            // Render Kanban
+            renderKanban(simRows);
+            
+            // Update Charts
+            updateCharts(simRows);
+        }
+
+        // --- KANBAN RENDERER ---
+        function renderKanban(rows) {
+            const colHeavy = document.getElementById('colHeavy');
+            const colMedium = document.getElementById('colMedium');
+            const colLight = document.getElementById('colLight');
+            
+            colHeavy.innerHTML = ''; colMedium.innerHTML = ''; colLight.innerHTML = '';
+            let cH=0, cM=0, cL=0;
+
+            rows.forEach(row => {
+                // Determine Category based on BASE cost (to keep cards from jumping columns)
+                const isHeavy = row.Standard_Cycle_Cost_Cr > 50;
+                const isMed = row.Standard_Cycle_Cost_Cr <= 50 && row.Standard_Cycle_Cost_Cr > 20;
+                
+                // Card Logic
+                const diff = row.ONOE_Cycle_Cost_Cr - row.simCost;
+                const isSaving = diff >= 0;
+                const diffColor = isSaving ? 'text-emerald-400' : 'text-red-400';
+                const diffArrow = isSaving ? '▼' : '▲';
+
+                const cardHTML = `
+                <div class="task-card bg-cardBg p-3 rounded shadow cursor-pointer group hover:bg-slate-700">
+                    <div class="flex justify-between items-start mb-1">
+                        <h4 class="font-bold text-xs text-white">${row.State}</h4>
+                        <span class="text-[10px] text-textSub bg-slate-900 px-1 rounded">₹${row.simCost.toFixed(1)} Cr</span>
+                    </div>
+                    <div class="flex justify-between items-center mt-2 border-t border-slate-600 pt-2">
+                         <div class="text-[10px] text-textSub">Original: ₹${row.ONOE_Cycle_Cost_Cr.toFixed(1)}</div>
+                         <div class="text-xs font-mono font-bold ${diffColor}">
+                            ${diffArrow} ${Math.abs(diff).toFixed(1)} Cr
+                         </div>
+                    </div>
+                </div>`;
+
+                if(isHeavy) { colHeavy.innerHTML += cardHTML; cH++; }
+                else if(isMed) { colMedium.innerHTML += cardHTML; cM++; }
+                else { colLight.innerHTML += cardHTML; cL++; }
+            });
+
+            document.getElementById('countHeavy').innerText = cH;
+            document.getElementById('countMedium').innerText = cM;
+            document.getElementById('countLight').innerText = cL;
+        }
+
+        // --- CHARTS CONFIG ---
+        function setupCharts() {
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.borderColor = '#334155';
+            
+            // 1. RADAR
+            radarChart = new Chart(document.getElementById('radarChart'), {
+                type: 'radar',
+                data: {
+                    labels: ['North', 'South', 'East', 'West', 'Central'],
+                    datasets: [
+                        {
+                            label: 'Baseline Load',
+                            data: [0,0,0,0,0],
+                            borderColor: '#64748b', // Slate 500
+                            backgroundColor: 'rgba(100, 116, 139, 0.2)',
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Optimized Load',
+                            data: [0,0,0,0,0],
+                            borderColor: '#8b5cf6', // Violet
+                            backgroundColor: 'rgba(139, 92, 246, 0.4)',
+                            pointBackgroundColor: '#fff'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: { 
+                            grid: { color: '#334155' }, 
+                            angleLines: { color: '#334155' },
+                            ticks: { display: false, backdropColor: 'transparent' } 
+                        }
+                    },
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+                }
+            });
+
+            // 2. STACKED
+            stackedChart = new Chart(document.getElementById('stackedChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Heavy Ops', 'Std Ops', 'Local'],
+                    datasets: [
+                        { label: 'Simulated Cost', data: [], backgroundColor: '#8b5cf6' },
+                        { label: 'Cost Savings', data: [], backgroundColor: '#10b981' } // Emerald
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { 
+                        x: { stacked: true, grid: { display: false } }, 
+                        y: { stacked: true, display: false } 
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function updateCharts(rows) {
+            // Region Aggr for Radar
+            const regions = { "North": 0, "South": 0, "East": 0, "West": 0, "Central": 0 };
+            const regionsBase = { "North": 0, "South": 0, "East": 0, "West": 0, "Central": 0 };
+
+            rows.forEach(d => {
+                let r = "Central";
+                if(["Uttar Pradesh","Delhi (NCT)","Punjab","Haryana","Himachal Pradesh","Jammu & Kashmir","Uttarakhand"].includes(d.State)) r="North";
+                else if(["Tamil Nadu","Karnataka","Kerala","Andhra Pradesh","Telangana"].includes(d.State)) r="South";
+                else if(["West Bengal","Bihar","Odisha","Jharkhand","Assam"].includes(d.State)) r="East";
+                else if(["Maharashtra","Gujarat","Rajasthan","Goa"].includes(d.State)) r="West";
+                
+                regions[r] += d.simCost;
+                regionsBase[r] += d.ONOE_Cycle_Cost_Cr;
+            });
+
+            radarChart.data.datasets[0].data = Object.values(regionsBase);
+            radarChart.data.datasets[1].data = Object.values(regions);
+            radarChart.update();
+
+            // Stacked Data
+            const heavy = rows.filter(r => r.Standard_Cycle_Cost_Cr > 50);
+            const med = rows.filter(r => r.Standard_Cycle_Cost_Cr <= 50 && r.Standard_Cycle_Cost_Cr > 20);
+            const light = rows.filter(r => r.Standard_Cycle_Cost_Cr <= 20);
+
+            const sumSim = (arr) => arr.reduce((a,b)=>a+b.simCost,0);
+            const sumSave = (arr) => arr.reduce((a,b)=>a+Math.max(0, b.ONOE_Cycle_Cost_Cr - b.simCost),0);
+
+            stackedChart.data.datasets[0].data = [sumSim(heavy), sumSim(med), sumSim(light)];
+            stackedChart.data.datasets[1].data = [sumSave(heavy), sumSave(med), sumSave(light)];
+            stackedChart.update();
+        }
+
+        function downloadCSV() {
+            // Generate CSV from current simulation state
+            let csv = "State,Scenario_Cost_Cr,Original_Cost_Cr,Savings_Cr\n";
+            currentSimData.forEach(row => {
+                const saving = row.ONOE_Cycle_Cost_Cr - row.simCost;
+                csv += `${row.State},${row.simCost.toFixed(2)},${row.ONOE_Cycle_Cost_Cr.toFixed(2)},${saving.toFixed(2)}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'simulated_logistics_manifest.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

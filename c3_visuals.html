@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ONOE Security Operations Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgMain: '#080c14',    // Darker, Security feel
+                        colBg: '#111827',     // Gray 900
+                        cardBg: '#1f2937',    // Gray 800
+                        primary: '#0ea5e9',   // Sky 500 (Police/Security Blue)
+                        primaryDim: 'rgba(14, 165, 233, 0.2)',
+                        accent: '#38bdf8',    // Sky 400
+                        critical: '#ef4444',  // Red 500
+                        secure: '#10b981',    // Emerald 500
+                        textMain: '#f0f9ff',
+                        textSub: '#94a3b8'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #080c14; color: #f0f9ff; font-family: 'Inter', sans-serif; }
+        
+        /* Cyan Range Slider */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #0ea5e9; margin-top: -6px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(14, 165, 233, 0.6);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; background: #374151; border-radius: 2px;
+        }
+
+        /* Matrix Grid Scroll */
+        .matrix-scroll { overflow-y: auto; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden p-3 md:p-5">
+
+    <header class="shrink-0 mb-4 border-b border-gray-800 pb-4">
+        <div class="flex justify-between items-center">
+            <div>
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="bg-primary text-black text-[10px] font-bold px-2 py-0.5 rounded uppercase">Security Ops</span>
+                    <span class="text-textSub text-xs uppercase tracking-widest font-bold">Interface 3</span>
+                </div>
+                <h1 class="text-2xl font-bold flex items-center gap-2 text-white">
+                    <span>🛡️</span> Security Deployment Grid
+                </h1>
+            </div>
+
+            <div class="flex gap-1 md:gap-4 bg-gray-900 p-2 rounded border border-gray-800 shadow-lg border-l-4 border-l-primary">
+                <div class="px-2 md:px-4">
+                    <div class="text-[10px] text-textSub uppercase">Total Personnel Req</div>
+                    <div class="text-xl font-bold text-white"><span id="kpiReq">0</span> L</div>
+                </div>
+                <div class="w-px bg-gray-700"></div>
+                <div class="px-2 md:px-4">
+                    <div class="text-[10px] text-textSub uppercase text-primary">Est. Deployment Cost</div>
+                    <div class="text-xl font-bold text-accent">₹<span id="kpiCost">0</span> Cr</div>
+                </div>
+                <div class="w-px bg-gray-700"></div>
+                <div class="px-2 md:px-4">
+                    <div class="text-[10px] text-textSub uppercase">Force Deficit</div>
+                    <div class="text-xl font-bold text-critical" id="kpiDeficit">0%</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-0">
+
+        <div class="lg:col-span-3 flex flex-col gap-5">
+            
+            <div class="bg-colBg p-5 rounded-xl border border-gray-800 shadow-lg">
+                <h3 class="font-bold text-sm mb-6 flex items-center gap-2 text-primary uppercase tracking-wide">
+                    <span>⚡</span> Command Parameters
+                </h3>
+
+                <div class="mb-8 group">
+                    <div class="flex justify-between text-xs mb-2">
+                        <span class="text-textSub group-hover:text-white transition">Security Protocol (Threat)</span>
+                        <span class="font-mono font-bold text-critical" id="valThreat">Normal</span>
+                    </div>
+                    <input type="range" id="sliderThreat" min="1" max="3" value="1.5" step="0.5" class="w-full" oninput="updateSim()">
+                    <div class="text-[10px] text-gray-500 mt-1">Adjusts personnel per booth (Min vs Max).</div>
+                </div>
+
+                <div class="mb-8 group">
+                    <div class="flex justify-between text-xs mb-2">
+                        <span class="text-textSub group-hover:text-white transition">Central Force Ratio</span>
+                        <span class="font-mono font-bold text-accent" id="valCapf">30%</span>
+                    </div>
+                    <input type="range" id="sliderCapf" min="10" max="80" value="30" step="10" class="w-full" oninput="updateSim()">
+                    <div class="text-[10px] text-gray-500 mt-1">Higher CAPF = Higher Cost & Security.</div>
+                </div>
+
+                <div class="mb-2 group">
+                    <div class="flex justify-between text-xs mb-2">
+                        <span class="text-textSub group-hover:text-white transition">Tech Surveillance (CCTV/Drone)</span>
+                        <span class="font-mono font-bold text-secure" id="valTech">Low</span>
+                    </div>
+                    <input type="range" id="sliderTech" min="0" max="40" value="0" step="10" class="w-full" oninput="updateSim()">
+                    <div class="text-[10px] text-gray-500 mt-1">Reduces manpower needs by replacing boots with eyes.</div>
+                </div>
+            </div>
+
+            <div class="bg-colBg p-4 rounded-xl border border-gray-800 shadow-lg flex-grow flex flex-col min-h-0">
+                <h3 class="text-xs font-bold text-textSub uppercase mb-2">National Force Availability</h3>
+                <div class="relative w-full flex-grow">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-6 bg-colBg rounded-xl border border-gray-800 shadow-lg flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center shrink-0">
+                <h3 class="font-bold text-white text-sm">Tactical Zone Matrix</h3>
+                <div class="flex gap-2 text-[10px]">
+                    <span class="flex items-center gap-1"><div class="w-2 h-2 bg-emerald-500 rounded-full"></div> Secure</span>
+                    <span class="flex items-center gap-1"><div class="w-2 h-2 bg-yellow-500 rounded-full"></div> Stretched</span>
+                    <span class="flex items-center gap-1"><div class="w-2 h-2 bg-red-500 rounded-full"></div> Deficit</span>
+                </div>
+            </div>
+            
+            <div class="matrix-scroll flex-grow p-4">
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3" id="matrixGrid">
+                    </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-3 flex flex-col gap-4 min-h-0">
+            <div class="bg-colBg p-4 rounded-xl border border-gray-800 shadow-lg flex-grow flex flex-col">
+                <h3 class="text-xs font-bold text-textSub uppercase mb-4">Cost vs. Security Trade-off</h3>
+                <div class="w-full flex-grow relative">
+                    <canvas id="scatterChart"></canvas>
+                </div>
+                <div class="mt-2 text-[10px] text-gray-500 text-center">
+                    Higher security protocol increases cost exponentially.
+                </div>
+            </div>
+
+            <div class="bg-cardBg p-4 rounded-xl border border-gray-700 shadow-lg shrink-0">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs text-gray-400">Projected CAPF Companies</span>
+                    <span class="text-lg font-bold text-white" id="valCompanies">0</span>
+                </div>
+                <button onclick="downloadCSV()" class="w-full bg-primary hover:bg-sky-600 text-black py-2 rounded font-bold text-xs uppercase transition shadow-lg flex justify-center items-center gap-2">
+                    <span>📡</span> Export Deployment Plan
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- DATASET: SECURITY ---
+        // Simulated: State, Total Booths (000s), Available State Police (000s)
+        // Assume 100 CAPF companies = ~10,000 troops available nationally (Simulated limit)
+        const rawCsvData = `State,Booths_k,State_Police_k,Sensitive_Booths_Pct
+Uttar Pradesh,160,250,35
+Maharashtra,95,200,20
+West Bengal,78,90,45
+Bihar,72,80,40
+Tamil Nadu,68,110,15
+Madhya Pradesh,65,100,25
+Karnataka,58,95,15
+Rajasthan,52,85,20
+Gujarat,51,90,10
+Andhra Pradesh,46,60,30
+Odisha,38,55,35
+Kerala,25,50,40
+Telangana,35,55,20
+Assam,28,45,50
+Punjab,24,80,15
+Haryana,19,45,25
+Chhattisgarh,23,40,60
+Jharkhand,29,40,55
+Jammu & Kashmir,11,60,80
+Delhi,13,80,5`;
+
+        let data = [];
+        let barChart, scatterChart;
+        let currentSimData = [];
+
+        function init() {
+            const results = Papa.parse(rawCsvData, { header: true, dynamicTyping: true, skipEmptyLines: true });
+            data = results.data;
+            setupCharts();
+            updateSim();
+        }
+
+        // --- CALCULATION ENGINE ---
+        function calculateScenario() {
+            // Get Sliders
+            const threatVal = parseFloat(document.getElementById('sliderThreat').value);
+            const capfRatio = parseInt(document.getElementById('sliderCapf').value) / 100;
+            const techSave = parseInt(document.getElementById('sliderTech').value) / 100;
+
+            // Labels
+            let threatLabel = "Normal";
+            if(threatVal <= 1) threatLabel = "Low";
+            else if(threatVal >= 2.5) threatLabel = "Critical";
+            else if(threatVal >= 2) threatLabel = "High";
+            document.getElementById('valThreat').innerText = threatLabel;
+            document.getElementById('valThreat').className = `font-mono font-bold ${threatVal > 2 ? 'text-critical' : 'text-white'}`;
+            
+            document.getElementById('valCapf').innerText = (capfRatio*100) + "%";
+            document.getElementById('valTech').innerText = (techSave*100) + "%";
+
+            // Calculation Constants
+            const BASE_PER_BOOTH = 3; // 3 people per booth standard
+            const COST_CAPF_PER_HEAD = 0.05; // Lakhs (Simulated)
+            const COST_STATE_PER_HEAD = 0.02; // Lakhs (Simulated)
+
+            let totalReq = 0;
+            let totalCost = 0;
+            let totalDeficit = 0;
+            let totalCompanies = 0;
+
+            const simData = data.map(row => {
+                // 1. Requirement Calc
+                // Sensitive booths need 2x force. Threat Level acts as multiplier.
+                // Tech investment reduces requirement.
+                
+                const avgPersonnelPerBooth = (BASE_PER_BOOTH * threatVal) * (1 - techSave);
+                
+                // Adjust for sensitivity
+                const weightedReq = (row.Booths_k * 1000) * avgPersonnelPerBooth * (1 + (row.Sensitive_Booths_Pct/100));
+                
+                // 2. Supply Calc
+                const reqCAPF = weightedReq * capfRatio;
+                const reqState = weightedReq * (1 - capfRatio);
+                
+                // 3. Cost Calc
+                const cost = (reqCAPF * COST_CAPF_PER_HEAD) + (reqState * COST_STATE_PER_HEAD); // in Lakhs
+                
+                // 4. Deficit Check (Do we have enough State Police?)
+                // Assuming State Police availability is fixed (row.State_Police_k).
+                // If reqState > Available, we have a deficit (need more CAPF or Home Guards).
+                const stateDeficit = Math.max(0, reqState - (row.State_Police_k * 1000));
+                
+                // Companies needed (1 Coy = ~100 active personnel)
+                const companies = reqCAPF / 100;
+
+                totalReq += weightedReq;
+                totalCost += cost;
+                totalDeficit += stateDeficit;
+                totalCompanies += companies;
+
+                // Status for Matrix
+                let status = 'secure';
+                if(stateDeficit > 0) status = 'stretched';
+                if(stateDeficit > (row.State_Police_k * 1000 * 0.2)) status = 'deficit'; // Critical if deficit > 20% of capacity
+
+                return {
+                    state: row.State,
+                    req: weightedReq,
+                    costCr: cost / 100, // Convert Lakhs to Cr
+                    deficit: stateDeficit,
+                    status: status,
+                    companies: companies
+                };
+            });
+
+            return { totalReq, totalCost, totalDeficit, totalCompanies, simData };
+        }
+
+        // --- UI UPDATER ---
+        function updateSim() {
+            const { totalReq, totalCost, totalDeficit, totalCompanies, simData } = calculateScenario();
+            currentSimData = simData;
+
+            // KPI Header
+            document.getElementById('kpiReq').innerText = (totalReq / 100000).toFixed(2); // In Lakhs
+            document.getElementById('kpiCost').innerText = (totalCost / 100).toFixed(0); // In Cr
+            document.getElementById('kpiDeficit').innerText = ((totalDeficit / totalReq)*100).toFixed(1) + "%";
+            document.getElementById('valCompanies').innerText = Math.round(totalCompanies);
+
+            // Matrix Render
+            renderMatrix(simData);
+
+            // Chart Render
+            updateCharts(totalReq, totalDeficit, totalCost);
+        }
+
+        function renderMatrix(data) {
+            const grid = document.getElementById('matrixGrid');
+            grid.innerHTML = '';
+            
+            data.forEach(d => {
+                let colorClass = 'border-emerald-500/50 bg-emerald-900/10 text-emerald-400';
+                if(d.status === 'stretched') colorClass = 'border-yellow-500/50 bg-yellow-900/10 text-yellow-400';
+                if(d.status === 'deficit') colorClass = 'border-red-500/50 bg-red-900/20 text-red-400';
+
+                const div = document.createElement('div');
+                div.className = `p-3 rounded border ${colorClass} flex flex-col justify-between h-24 hover:scale-105 transition cursor-pointer`;
+                div.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <span class="font-bold text-xs text-white">${d.state}</span>
+                        <div class="w-2 h-2 rounded-full ${d.status === 'deficit' ? 'bg-red-500 animate-pulse' : (d.status==='stretched'?'bg-yellow-500':'bg-emerald-500')}"></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-gray-400">Force Req</div>
+                        <div class="font-mono text-sm font-bold">${(d.req/1000).toFixed(1)}k</div>
+                    </div>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        // --- CHARTS ---
+        function setupCharts() {
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.borderColor = '#374151';
+
+            // 1. Bar Chart (Supply vs Demand)
+            barChart = new Chart(document.getElementById('barChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Total Required', 'State Avail', 'Deficit Gap'],
+                    datasets: [{
+                        label: 'Personnel (Lakhs)',
+                        data: [0, 0, 0],
+                        backgroundColor: ['#0ea5e9', '#10b981', '#ef4444'],
+                        barThickness: 40
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { grid: { color: '#374151' } } }
+                }
+            });
+
+            // 2. Scatter (Cost vs Risk) - Abstract visualization
+            scatterChart = new Chart(document.getElementById('scatterChart'), {
+                type: 'line',
+                data: {
+                    labels: ['Low', 'Normal', 'High', 'Critical'],
+                    datasets: [{
+                        label: 'Cost Curve',
+                        data: [1000, 2500, 5000, 9000], // Dummy curve to start
+                        borderColor: '#0ea5e9',
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: 'rgba(14, 165, 233, 0.1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { display: false }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        function updateCharts(totalReq, totalDeficit, totalCost) {
+            // Bar Update
+            // Converting raw numbers to Lakhs for chart
+            const reqL = totalReq / 100000;
+            const defL = totalDeficit / 100000;
+            const availL = reqL - defL;
+
+            barChart.data.datasets[0].data = [reqL, availL, defL];
+            barChart.update();
+
+            // Scatter Curve Update (Simulating the exponential cost of threat levels)
+            // We scale the curve based on current cost
+            const baseC = totalCost / 100;
+            scatterChart.data.datasets[0].data = [baseC * 0.6, baseC, baseC * 1.5, baseC * 2.5];
+            scatterChart.update();
+        }
+
+        function downloadCSV() {
+            let csv = "State,Required_Force,Cost_Cr,Deficit_Gap,Status\n";
+            currentSimData.forEach(d => {
+                csv += `${d.state},${d.req.toFixed(0)},${d.costCr.toFixed(2)},${d.deficit.toFixed(0)},${d.status}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'security_deployment_plan.csv';
+            a.click();
+        }
+
+        init();
+    </script>
+</body>
+</html>
